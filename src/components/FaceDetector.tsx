@@ -3,6 +3,7 @@ import React, { useRef, useEffect, useState } from 'react';
 import * as faceapi from 'face-api.js';
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { CameraOff } from 'lucide-react';
 
 interface FaceDetectorProps {
   onEmotionDetected: (emotion: string) => void;
@@ -14,6 +15,7 @@ const FaceDetector: React.FC<FaceDetectorProps> = ({ onEmotionDetected }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [detectionError, setDetectionError] = useState<string | null>(null);
   const [currentEmotion, setCurrentEmotion] = useState<string>("neutral");
+  const [modelsLoaded, setModelsLoaded] = useState(false);
 
   // Load models and start video
   useEffect(() => {
@@ -21,11 +23,15 @@ const FaceDetector: React.FC<FaceDetectorProps> = ({ onEmotionDetected }) => {
       try {
         setIsLoading(true);
         
-        // Load face detection models
+        // Load face detection models directly from the CDN instead of local files
+        const MODEL_URL = 'https://justadudewhohacks.github.io/face-api.js/models';
         await Promise.all([
-          faceapi.nets.tinyFaceDetector.loadFromUri('/models'),
-          faceapi.nets.faceExpressionNet.loadFromUri('/models')
+          faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+          faceapi.nets.faceExpressionNet.loadFromUri(MODEL_URL)
         ]);
+        
+        setModelsLoaded(true);
+        console.log("Models loaded successfully");
         
         if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
           // Start video stream
@@ -61,7 +67,7 @@ const FaceDetector: React.FC<FaceDetectorProps> = ({ onEmotionDetected }) => {
 
   // Set up face detection once video is playing
   const handleVideoPlay = () => {
-    if (!canvasRef.current || !videoRef.current) return;
+    if (!canvasRef.current || !videoRef.current || !modelsLoaded) return;
     
     const canvas = canvasRef.current;
     const video = videoRef.current;
@@ -132,6 +138,7 @@ const FaceDetector: React.FC<FaceDetectorProps> = ({ onEmotionDetected }) => {
         
         {detectionError && (
           <div className="p-6 text-center">
+            <CameraOff className="h-12 w-12 mx-auto mb-4 text-destructive" />
             <p className="text-destructive">{detectionError}</p>
             <p className="mt-2">Please make sure you've enabled camera permissions</p>
           </div>

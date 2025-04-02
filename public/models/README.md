@@ -1,11 +1,8 @@
 
 # Face Detection Models
 
-This directory will contain the face-api.js models needed for facial expression detection:
+This application uses face-api.js for facial expression detection.
 
-- tiny_face_detector_model-weights_manifest.json
-- tiny_face_detector_model-shard1
-- face_expression_model-weights_manifest.json
-- face_expression_model-shard1
+The models are loaded directly from the CDN at https://justadudewhohacks.github.io/face-api.js/models instead of local files to ensure reliable loading.
 
-These files will be downloaded automatically by face-api.js when the application runs for the first time.
+This helps avoid issues with model loading paths and ensures the application works smoothly in various environments.
