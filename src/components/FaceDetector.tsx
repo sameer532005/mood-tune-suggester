@@ -16,6 +16,8 @@ const FaceDetector: React.FC<FaceDetectorProps> = ({ onEmotionDetected }) => {
   const [detectionError, setDetectionError] = useState<string | null>(null);
   const [currentEmotion, setCurrentEmotion] = useState<string>("neutral");
   const [modelsLoaded, setModelsLoaded] = useState(false);
+  const [emotionBuffer, setEmotionBuffer] = useState<Array<string>>([]);
+  const [lastEmotionUpdate, setLastEmotionUpdate] = useState(0);
 
   // Load models and start video
   useEffect(() => {
@@ -27,16 +29,22 @@ const FaceDetector: React.FC<FaceDetectorProps> = ({ onEmotionDetected }) => {
         const MODEL_URL = 'https://justadudewhohacks.github.io/face-api.js/models';
         await Promise.all([
           faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
-          faceapi.nets.faceExpressionNet.loadFromUri(MODEL_URL)
+          faceapi.nets.faceExpressionNet.loadFromUri(MODEL_URL),
+          // Add face landmark model for better accuracy
+          faceapi.nets.faceLandmarkNet.loadFromUri(MODEL_URL)
         ]);
         
         setModelsLoaded(true);
         console.log("Models loaded successfully");
         
         if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-          // Start video stream
+          // Request higher resolution for better accuracy
           const stream = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: 'user' }
+            video: { 
+              facingMode: 'user',
+              width: { ideal: 1280 },
+              height: { ideal: 720 }
+            }
           });
           
           if (videoRef.current) {
@@ -65,6 +73,28 @@ const FaceDetector: React.FC<FaceDetectorProps> = ({ onEmotionDetected }) => {
     };
   }, []);
 
+  // Helper function to get most common emotion from buffer
+  const getMostCommonEmotion = (emotionArray: string[]): string => {
+    if (emotionArray.length === 0) return "neutral";
+    
+    const counts: Record<string, number> = {};
+    emotionArray.forEach(emotion => {
+      counts[emotion] = (counts[emotion] || 0) + 1;
+    });
+    
+    let maxCount = 0;
+    let mostCommonEmotion = "neutral";
+    
+    for (const emotion in counts) {
+      if (counts[emotion] > maxCount) {
+        maxCount = counts[emotion];
+        mostCommonEmotion = emotion;
+      }
+    }
+    
+    return mostCommonEmotion;
+  };
+
   // Set up face detection once video is playing
   const handleVideoPlay = () => {
     if (!canvasRef.current || !videoRef.current || !modelsLoaded) return;
@@ -79,8 +109,12 @@ const FaceDetector: React.FC<FaceDetectorProps> = ({ onEmotionDetected }) => {
       if (!video || !canvas) return;
       
       try {
+        // Add minConfidence for better accuracy and include landmarks
+        const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.5 });
+        
         const detections = await faceapi
-          .detectAllFaces(video, new faceapi.TinyFaceDetectorOptions())
+          .detectAllFaces(video, options)
+          .withFaceLandmarks()
           .withFaceExpressions();
           
         if (detections && detections.length > 0) {
@@ -90,17 +124,38 @@ const FaceDetector: React.FC<FaceDetectorProps> = ({ onEmotionDetected }) => {
           );
           
           const emotion = maxExpression[0];
-          // Only update if emotion changed to avoid too many rerenders
-          if (emotion !== currentEmotion) {
-            setCurrentEmotion(emotion);
-            onEmotionDetected(emotion);
+          const confidence = maxExpression[1];
+          
+          // Only consider emotions with sufficient confidence
+          if (confidence > 0.6) {
+            // Add to buffer for smoothing
+            const newBuffer = [...emotionBuffer, emotion];
+            if (newBuffer.length > 10) {
+              newBuffer.shift(); // Keep buffer size at 10
+            }
+            setEmotionBuffer(newBuffer);
+            
+            // Check if it's time to update the emotion (every 2 seconds)
+            const now = Date.now();
+            if (now - lastEmotionUpdate > 2000) {
+              const stableEmotion = getMostCommonEmotion(newBuffer);
+              
+              // Only update if emotion changed to avoid too many rerenders
+              if (stableEmotion !== currentEmotion) {
+                console.log("Stable emotion detected:", stableEmotion, "with confidence:", confidence);
+                setCurrentEmotion(stableEmotion);
+                onEmotionDetected(stableEmotion);
+                setLastEmotionUpdate(now);
+              }
+            }
           }
           
           // Draw results on canvas
           const resizedDetections = faceapi.resizeResults(detections, displaySize);
           canvas.getContext('2d')?.clearRect(0, 0, canvas.width, canvas.height);
           faceapi.draw.drawDetections(canvas, resizedDetections);
-          faceapi.draw.drawFaceExpressions(canvas, resizedDetections);
+          faceapi.draw.drawFaceLandmarks(canvas, resizedDetections);
+          faceapi.draw.drawFaceExpressions(canvas, resizedDetections, 0.6);
         }
       } catch (err) {
         console.error("Error during face detection:", err);
