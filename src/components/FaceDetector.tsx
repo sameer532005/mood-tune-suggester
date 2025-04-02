@@ -30,8 +30,8 @@ const FaceDetector: React.FC<FaceDetectorProps> = ({ onEmotionDetected }) => {
         await Promise.all([
           faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
           faceapi.nets.faceExpressionNet.loadFromUri(MODEL_URL),
-          // Add face landmark model for better accuracy
-          faceapi.nets.faceLandmarkNet.loadFromUri(MODEL_URL)
+          // Fix: Use faceLandmark68Net instead of non-existent faceLandmarkNet
+          faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL)
         ]);
         
         setModelsLoaded(true);
